@@ -106,9 +106,12 @@ fn main() -> io::Result<()> {
     for fasta_file in &args.input {
         let mut all_hashes = Vec::new();
         let reader: Box<dyn BufRead> = if fasta_file == "-" {
-            Box::new(io::stdin().lock())
+            let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
+            Box::new(BufReader::new(reader))
         } else {
-            Box::new(BufReader::new(File::open(fasta_file).unwrap()))
+            // Box::new(BufReader::new(File::open(fasta_file).unwrap()))
+            let (reader, _) = niffler::get_reader(Box::new(File::open(fasta_file)?)).unwrap();
+            Box::new(BufReader::new(reader))
         };
         info!("Processing file: {}", fasta_file);
         let file_hashes =

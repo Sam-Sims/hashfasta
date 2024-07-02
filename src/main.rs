@@ -45,6 +45,28 @@ fn rc_lookup(x: u8) -> u8 {
     RC_LOOKUP_TABLE[x as usize]
 }
 
+/// Trait to allow trimming ascii whitespace from a &[u8].
+pub trait SliceExt {
+    fn trim(&self) -> &Self;
+}
+
+impl SliceExt for [u8] {
+    /// https://stackoverflow.com/questions/31101915/how-to-implement-trim-for-vecu8
+    ///
+    /// Trim ascii whitespace (based on is_ascii_whitespace())
+    /// from the start and end of &\[u8\].
+    ///
+    /// Returns &\[u8\] with leading and trailing whitespace removed.
+    fn trim(&self) -> &[u8] {
+        let from = match self.iter().position(|x| !x.is_ascii_whitespace()) {
+            Some(i) => i,
+            None => return &self[0..0],
+        };
+        let to = self.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
+        &self[from..=to]
+    }
+}
+
 pub fn process_fasta_reader(
     reader: Box<dyn BufRead>,
     output_individual: bool,
@@ -58,8 +80,9 @@ pub fn process_fasta_reader(
     for result in reader.records() {
         let record = result?;
         let record_name = std::str::from_utf8(record.name()).unwrap().to_string();
-        let seq = record.sequence().as_ref();
+        let seq = record.sequence().as_ref().trim();
         let mut normal_seq = seq.iter().map(|&x| lookup(x)).collect::<Vec<u8>>();
+
         if reverse {
             let mut rc_seq = seq.iter().map(|&x| rc_lookup(x)).collect::<Vec<u8>>();
             rc_seq.reverse();

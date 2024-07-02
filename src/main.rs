@@ -97,26 +97,34 @@ fn main() -> io::Result<()> {
 
     env_logger::init_from_env(env);
 
-    let algorithm = match (args.md5, args.highway) {
-        (true, _) => HashAlgorithm::Md5,
-        (_, true) => HashAlgorithm::Highway,
-        _ => HashAlgorithm::Sha2,
-    };
-
-    for fasta_file in &args.input {
+    for input_file in &args.input {
         let mut all_hashes = Vec::new();
-        let reader: Box<dyn BufRead> = if fasta_file == "-" {
-            Box::new(io::stdin().lock())
+        let reader: Box<dyn BufRead> = if input_file == "-" {
+            let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
+            Box::new(BufReader::new(reader))
         } else {
-            Box::new(BufReader::new(File::open(fasta_file).unwrap()))
+            let (reader, _) = niffler::get_reader(Box::new(File::open(input_file)?)).unwrap();
+            Box::new(BufReader::new(reader))
         };
-        info!("Processing file: {}", fasta_file);
-        let file_hashes =
-            process_fasta_reader(reader, args.individual_output, args.canonical, &algorithm)?;
+
+        // if args is fasta
+        let filetype = match (args.fasta, args.fastq) {
+            (true, _) => Filetype::Fasta,
+            (_, true) => Filetype::Fastq,
+            _ => Filetype::Auto,
+        };
+
+        info!("Processing file: {}", input_file);
+        let file_hashes = process_fasta_reader(
+            reader,
+            args.individual_output,
+            args.canonical,
+            &args.seqhash,
+        )?;
         all_hashes.extend(file_hashes);
 
         all_hashes.sort();
-        let final_hash = calculate_final_hash(&algorithm, &all_hashes);
+        let final_hash = calculate_final_hash(&args.finalhash, &all_hashes);
 
         println!(
             "Final hash\t{}",

@@ -27,6 +27,7 @@ pub struct Cli {
     // sequence hash algorithm
     #[arg(long = "seqhash", default_value = "highway")]
     pub seqhash: HashAlgorithm,
+
     // final hash algorithm
     #[arg(long = "finalhash", default_value = "md5")]
     pub finalhash: HashAlgorithm,

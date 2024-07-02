@@ -1,6 +1,3 @@
-use std::io::{self, BufRead};
-use std::error::Error;
-
 pub enum FileType {
     Fasta,
     Fastq,

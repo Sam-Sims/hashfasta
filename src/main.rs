@@ -151,25 +151,13 @@ fn main() -> io::Result<()> {
                     break;
                 }
             }
-
-            // Send the first 100 lines to the auto_determine_file_type function
+            // Send the first 100 lines to use in determining the file type
             let determined_type = auto_determine_file_type(&first_lines);
-            match determined_type {
-                FileType::Unknown => {
-                    let error_message = format!("Unable to determine file type for '{}'. Please specify the file type using --fasta or --fastq.",
-                                                input_file
-                    );
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, error_message));
-                },
-                _ => {
-                    // Create a new reader that combiness the first 100 lines we just read with the original reader
-                    let combined_reader = Cursor::new(first_lines).chain(reader);
-
-                    // Replace our original reader with this new combined reader
-                    reader = Box::new(BufReader::new(combined_reader));
-                    determined_type
-                }
-            }
+            // Create a new reader that combiness the first 100 lines we just read with the original reader
+            let combined_reader = Cursor::new(first_lines).chain(reader);
+            // Replace our original reader with this new combined reader
+            reader = Box::new(BufReader::new(combined_reader));
+            determined_type
         };
 
         let file_hashes = match file_type {

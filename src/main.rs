@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Cursor, Read};
 
 use clap::Parser;
 use env_logger::Env;
@@ -9,10 +9,11 @@ use owo_colors::{OwoColorize, Stream::Stdout};
 
 use cli::Cli;
 use hashers::{calculate_final_hash, calculate_hash, HashAlgorithm};
+use parser::{auto_determine_file_type, FileType};
 
 mod cli;
 mod hashers;
-
+mod parser;
 const LOOKUP_TABLE: [u8; 256] = [
     //A = 1 C = 2 G = 3 T = 4
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -122,28 +123,69 @@ fn main() -> io::Result<()> {
 
     for input_file in &args.input {
         let mut all_hashes = Vec::new();
-        let reader: Box<dyn BufRead> = if input_file == "-" {
+        let mut reader: Box<dyn BufRead> = if input_file == "-" {
             let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
             Box::new(BufReader::new(reader))
         } else {
             let (reader, _) = niffler::get_reader(Box::new(File::open(input_file)?)).unwrap();
             Box::new(BufReader::new(reader))
         };
+        info!("Processing file: {}", input_file);
 
-        // if args is fasta
-        let filetype = match (args.fasta, args.fastq) {
-            (true, _) => Filetype::Fasta,
-            (_, true) => Filetype::Fastq,
-            _ => Filetype::Auto,
+        let file_type = if args.fasta {
+            FileType::Fasta
+        } else if args.fastq {
+            FileType::Fastq
+        } else {
+            let mut first_lines = String::new();
+            let mut line_count = 0;
+
+            // Start iterating over the first 100 lines of the reader
+            for line in reader.by_ref().lines() {
+                let line = line?;
+                first_lines.push_str(&line);
+                first_lines.push('\n');
+                line_count += 1;
+
+                if line_count >= 100 {
+                    break;
+                }
+            }
+
+            // Send the first 100 lines to the auto_determine_file_type function
+            let determined_type = auto_determine_file_type(&first_lines);
+            match determined_type {
+                FileType::Unknown => {
+                    let error_message = format!("Unable to determine file type for '{}'. Please specify the file type using --fasta or --fastq.",
+                                                input_file
+                    );
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, error_message));
+                },
+                _ => {
+                    // Create a new reader that combiness the first 100 lines we just read with the original reader
+                    let combined_reader = Cursor::new(first_lines).chain(reader);
+
+                    // Replace our original reader with this new combined reader
+                    reader = Box::new(BufReader::new(combined_reader));
+                    determined_type
+                }
+            }
         };
 
-        info!("Processing file: {}", input_file);
-        let file_hashes = process_fasta_reader(
-            reader,
-            args.individual_output,
-            args.canonical,
-            &args.seqhash,
-        )?;
+        let file_hashes = match file_type {
+            FileType::Fasta => {
+                process_fasta_reader(
+                    reader,
+                    args.individual_output,
+                    args.canonical,
+                    &args.seqhash,
+                )?
+            }
+            FileType::Fastq => {
+                unimplemented!("Fastq not implemented")
+            }
+            FileType::Unknown => return Err(io::Error::new(io::ErrorKind::InvalidData, "Unknown file type")),
+        };
         all_hashes.extend(file_hashes);
 
         all_hashes.sort();

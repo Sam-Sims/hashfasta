@@ -1,10 +1,12 @@
 use std::hash::Hasher;
 
+use clap::ValueEnum;
 use hex::encode;
 use highway::{HighwayHash, HighwayHasher, Key};
 use md5::{Digest as Md5Digest, Md5};
 use sha2::{Digest as Sha2Digest, Sha256};
 
+#[derive(Clone, ValueEnum, Debug)]
 pub enum HashAlgorithm {
     Highway,
     Md5,

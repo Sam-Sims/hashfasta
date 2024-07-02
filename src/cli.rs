@@ -1,3 +1,4 @@
+use crate::hashers::HashAlgorithm;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -15,17 +16,20 @@ pub struct Cli {
     #[arg(short = 'c', long = "canonical", action)]
     pub canonical: bool,
 
-    //run md5
-    #[arg(long = "md5", action)]
-    pub md5: bool,
+    // fasta
+    #[arg(long = "fasta", action)]
+    pub fasta: bool,
 
-    //run sha1
-    #[arg(long = "sha2", action)]
-    pub sha2: bool,
+    // fastq
+    #[arg(long = "fastq", action)]
+    pub fastq: bool,
 
-    //run highwayhash
-    #[arg(long = "highway", action)]
-    pub highway: bool,
+    // sequence hash algorithm
+    #[arg(long = "seqhash", default_value = "highway")]
+    pub seqhash: HashAlgorithm,
+    // final hash algorithm
+    #[arg(long = "finalhash", default_value = "md5")]
+    pub finalhash: HashAlgorithm,
 }
 
 fn check_input_exists(s: &str) -> Result<String, String> {

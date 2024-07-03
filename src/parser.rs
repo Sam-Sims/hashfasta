@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::io;
 use std::io::BufRead;
 
-use log::info;
 use log::warn;
 use noodles::fasta;
 use noodles::fastq;
@@ -151,6 +150,7 @@ pub fn fastq_reader(
             }
         }
 
+        // we add this to a hashset, so seems inefficient to calculate the hash twice
         let hash = calculate_hash(algorithm, &normal_seq);
 
         if output_individual {

@@ -56,25 +56,7 @@ pub fn calculate_final_hash(algorithm: &HashAlgorithm, hashes: &[String]) -> Str
 
 #[cfg(test)]
 mod tests {
-    use crate::{lookup, rc_lookup};
-
     use super::*;
-
-    #[test]
-    fn test_lookup() {
-        assert_eq!(lookup(b'A'), 1);
-        assert_eq!(lookup(b'C'), 2);
-        assert_eq!(lookup(b'G'), 3);
-        assert_eq!(lookup(b'T'), 4);
-    }
-
-    #[test]
-    fn test_rc_lookup() {
-        assert_eq!(rc_lookup(b'A'), 4);
-        assert_eq!(rc_lookup(b'C'), 3);
-        assert_eq!(rc_lookup(b'G'), 2);
-        assert_eq!(rc_lookup(b'T'), 1);
-    }
 
     #[test]
     fn test_highway_same() {

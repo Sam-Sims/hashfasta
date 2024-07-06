@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::BufRead;
 
 use anyhow::{Context, Result};
-use log::warn;
+use log::info;
 use noodles::fasta;
 use noodles::fastq;
 use owo_colors::OwoColorize;
@@ -72,16 +72,18 @@ pub enum FileType {
 pub fn fasta_reader(
     reader: Box<dyn BufRead>,
     output_individual: bool,
-    reverse: bool,
+    cannonical: bool,
     algorithm: &HashAlgorithm,
-) -> Result<Vec<String>> {
+) -> Result<(Vec<String>, HashMap<String, String>)> {
     let mut reader = fasta::Reader::new(reader);
     let mut hashes = HashSet::new();
-    let mut duplicates = Vec::new();
+    let mut duplicates = HashMap::new();
 
     for result in reader.records() {
         let record = result.context("Error reading FASTA record")?;
-        let record_name = std::str::from_utf8(record.name()).context("Invalid UTF-8 character in FASTA record")?.to_string();
+        let record_name = std::str::from_utf8(record.name())
+            .context("Invalid UTF-8 character in FASTA record")?
+            .to_string();
         let seq = record.sequence().as_ref().trim();
         let mut normal_seq = Vec::with_capacity(seq.len());
 
@@ -89,7 +91,7 @@ pub fn fasta_reader(
             normal_seq.push(lookup(x));
         }
 
-        if reverse {
+        if cannonical {
             let mut rc_seq = Vec::with_capacity(seq.len());
             for &x in seq {
                 rc_seq.push(rc_lookup(x));
@@ -101,7 +103,7 @@ pub fn fasta_reader(
         }
         let hash = calculate_hash(algorithm, &normal_seq);
         if output_individual {
-            println!(
+            info!(
                 "{}\t{}",
                 record_name.if_supports_color(Stdout, |record_name| record_name.white()),
                 hash.if_supports_color(Stdout, |hash| hash.green())
@@ -109,38 +111,40 @@ pub fn fasta_reader(
         }
 
         if !hashes.insert(hash.clone()) {
-            duplicates.push(record_name);
+            duplicates.insert(record_name, hash);
         }
     }
-    if !duplicates.is_empty() {
-        warn!("Duplicates found:");
-        for duplicate in duplicates {
-            warn!("{}", duplicate);
-        }
-    }
-    Ok(hashes.into_iter().collect())
+    // if !duplicates.is_empty() {
+    //     warn!("Duplicates found:");
+    //     for duplicate in duplicates {
+    //         warn!("{}", duplicate);
+    //     }
+    // }
+    Ok((hashes.into_iter().collect(), duplicates))
 }
 
 pub fn fastq_reader(
     reader: Box<dyn BufRead>,
     output_individual: bool,
-    reverse: bool,
+    cannonical: bool,
     algorithm: &HashAlgorithm,
-) -> Result<Vec<String>> {
+) -> Result<(Vec<String>, HashMap<String, String>)> {
     let mut reader = fastq::Reader::new(reader);
     let mut hashes = HashSet::new();
-    let mut duplicates = Vec::new();
+    let mut duplicates = HashMap::new();
 
     for result in reader.records() {
         let record = result.context("Error reading FASTQ record")?;
-        let record_name = std::str::from_utf8(record.name()).context("Invalid UTF-8 character in FASTQ record")?.to_string();
+        let record_name = std::str::from_utf8(record.name())
+            .context("Invalid UTF-8 character in FASTQ record")?
+            .to_string();
         let seq = record.sequence().trim();
         let mut normal_seq = Vec::with_capacity(seq.len());
         for &x in seq {
             normal_seq.push(lookup(x));
         }
 
-        if reverse {
+        if cannonical {
             let mut rc_seq = Vec::with_capacity(seq.len());
             for &x in seq {
                 rc_seq.push(rc_lookup(x));
@@ -155,7 +159,7 @@ pub fn fastq_reader(
         let hash = calculate_hash(algorithm, &normal_seq);
 
         if output_individual {
-            println!(
+            info!(
                 "{}\t{}",
                 record_name.if_supports_color(Stdout, |record_name| record_name.white()),
                 hash.if_supports_color(Stdout, |hash| hash.green())
@@ -163,17 +167,17 @@ pub fn fastq_reader(
         }
 
         if !hashes.insert(hash.clone()) {
-            duplicates.push(record_name);
+            duplicates.insert(record_name, hash);
         }
     }
 
-    if !duplicates.is_empty() {
-        warn!("Duplicates found:");
-        for duplicate in duplicates {
-            warn!("{}", duplicate);
-        }
-    }
-    Ok(hashes.into_iter().collect())
+    // if !duplicates.is_empty() {
+    //     warn!("Duplicates found:");
+    //     for duplicate in duplicates {
+    //         warn!("{}", duplicate);
+    //     }
+    // }
+    Ok((hashes.into_iter().collect(), duplicates))
 }
 
 pub fn auto_determine_file_type(content: &str) -> FileType {

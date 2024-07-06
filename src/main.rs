@@ -4,7 +4,7 @@ use std::io::{self, BufRead, BufReader, Cursor, Read};
 use anyhow::{Context, Result};
 use clap::Parser;
 use env_logger::Env;
-use log::{error, info};
+use log::{error, info, warn};
 use owo_colors::{OwoColorize, Stream::Stdout};
 
 use cli::Cli;
@@ -15,13 +15,9 @@ mod cli;
 mod hashers;
 mod parser;
 
-
 fn run_hash() -> Result<()> {
     let args = Cli::parse();
-    let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "trace")
-        .write_style_or("MY_LOG_STYLE", "always");
-
+    let env = Env::default().filter_or("RUST_LOG", "info");
     env_logger::init_from_env(env);
 
     for input_file in &args.input {
@@ -63,26 +59,41 @@ fn run_hash() -> Result<()> {
             determined_type
         };
 
-        let file_hashes = match file_type {
+        let (file_hashes, duplicates) = match file_type {
             FileType::Fasta => parser::fasta_reader(
                 reader,
                 args.individual_output,
                 args.canonical,
                 &args.seqhash,
-            ).context("Error parsing FASTA file")?,
+            )
+                .context("Error parsing FASTA file")?,
             FileType::Fastq => parser::fastq_reader(
                 reader,
                 args.individual_output,
                 args.canonical,
                 &args.seqhash,
-            ).context("Error parsing FASTQ file")?,
+            )
+                .context("Error parsing FASTQ file")?,
             FileType::Unknown => {
                 return Err(anyhow::anyhow!("Unable to determine the file type from the first 100 lines. Please specify --fasta or --fastq."));
             }
         };
         all_hashes.extend(file_hashes);
-
         all_hashes.sort();
+        if !duplicates.is_empty() {
+            warn!("Duplicates found!");
+            if args.show_duplicates {
+                println!("{}\t{}", "Record Name", "Hash");
+                for (record_name, hash) in duplicates {
+                    println!(
+                        "{}\t{}",
+                        record_name.if_supports_color(Stdout, |record_name| record_name.white()),
+                        hash.if_supports_color(Stdout, |hash| hash.red())
+                    );
+                }
+            }
+        }
+
         let final_hash = calculate_final_hash(&args.finalhash, &all_hashes);
 
         println!(
@@ -90,7 +101,6 @@ fn run_hash() -> Result<()> {
             final_hash.if_supports_color(Stdout, |final_hash| final_hash.green())
         );
     }
-
     Ok(())
 }
 fn main() {

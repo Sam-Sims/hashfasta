@@ -1,5 +1,6 @@
-use crate::hashers::HashAlgorithm;
 use clap::Parser;
+
+use crate::hashers::HashAlgorithm;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Hash")]
@@ -23,6 +24,10 @@ pub struct Cli {
     // fastq
     #[arg(long = "fastq", action)]
     pub fastq: bool,
+
+    //display duplicates
+    #[arg(short = 'd', long = "duplicates", action)]
+    pub show_duplicates: bool,
 
     // sequence hash algorithm
     #[arg(long = "seqhash", default_value = "highway")]

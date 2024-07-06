@@ -1,9 +1,10 @@
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Cursor, Read};
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use env_logger::Env;
-use log::info;
+use log::{error, info};
 use owo_colors::{OwoColorize, Stream::Stdout};
 
 use cli::Cli;
@@ -14,7 +15,8 @@ mod cli;
 mod hashers;
 mod parser;
 
-fn main() -> io::Result<()> {
+
+fn run_hash() -> Result<()> {
     let args = Cli::parse();
     let env = Env::default()
         .filter_or("MY_LOG_LEVEL", "trace")
@@ -67,18 +69,15 @@ fn main() -> io::Result<()> {
                 args.individual_output,
                 args.canonical,
                 &args.seqhash,
-            )?,
+            ).context("Error parsing FASTA file")?,
             FileType::Fastq => parser::fastq_reader(
                 reader,
                 args.individual_output,
                 args.canonical,
                 &args.seqhash,
-            )?,
+            ).context("Error parsing FASTQ file")?,
             FileType::Unknown => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Unknown file type",
-                ))
+                return Err(anyhow::anyhow!("Unable to determine the file type from the first 100 lines. Please specify --fasta or --fastq."));
             }
         };
         all_hashes.extend(file_hashes);
@@ -93,4 +92,10 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+fn main() {
+    if let Err(err) = run_hash() {
+        error!("{}", err);
+        std::process::exit(1);
+    }
 }

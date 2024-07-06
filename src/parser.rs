@@ -1,7 +1,7 @@
 use std::collections::HashSet;
-use std::io;
 use std::io::BufRead;
 
+use anyhow::{Context, Result};
 use log::warn;
 use noodles::fasta;
 use noodles::fastq;
@@ -74,16 +74,17 @@ pub fn fasta_reader(
     output_individual: bool,
     reverse: bool,
     algorithm: &HashAlgorithm,
-) -> io::Result<Vec<String>> {
+) -> Result<Vec<String>> {
     let mut reader = fasta::Reader::new(reader);
-    let mut hashes = Vec::new();
+    let mut hashes = HashSet::new();
     let mut duplicates = Vec::new();
 
     for result in reader.records() {
-        let record = result?;
-        let record_name = std::str::from_utf8(record.name()).unwrap().to_string();
+        let record = result.context("Error reading FASTA record")?;
+        let record_name = std::str::from_utf8(record.name()).context("Invalid UTF-8 character in FASTA record")?.to_string();
         let seq = record.sequence().as_ref().trim();
         let mut normal_seq = Vec::with_capacity(seq.len());
+
         for &x in seq {
             normal_seq.push(lookup(x));
         }
@@ -106,10 +107,10 @@ pub fn fasta_reader(
                 hash.if_supports_color(Stdout, |hash| hash.green())
             );
         }
-        if hashes.contains(&hash) {
+
+        if !hashes.insert(hash.clone()) {
             duplicates.push(record_name);
         }
-        hashes.push(hash);
     }
     if !duplicates.is_empty() {
         warn!("Duplicates found:");
@@ -117,7 +118,7 @@ pub fn fasta_reader(
             warn!("{}", duplicate);
         }
     }
-    Ok(hashes)
+    Ok(hashes.into_iter().collect())
 }
 
 pub fn fastq_reader(
@@ -125,14 +126,14 @@ pub fn fastq_reader(
     output_individual: bool,
     reverse: bool,
     algorithm: &HashAlgorithm,
-) -> io::Result<Vec<String>> {
+) -> Result<Vec<String>> {
     let mut reader = fastq::Reader::new(reader);
     let mut hashes = HashSet::new();
     let mut duplicates = Vec::new();
 
     for result in reader.records() {
-        let record = result?;
-        let record_name = std::str::from_utf8(record.name()).unwrap().to_string();
+        let record = result.context("Error reading FASTQ record")?;
+        let record_name = std::str::from_utf8(record.name()).context("Invalid UTF-8 character in FASTQ record")?.to_string();
         let seq = record.sequence().trim();
         let mut normal_seq = Vec::with_capacity(seq.len());
         for &x in seq {

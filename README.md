@@ -13,7 +13,7 @@ Supports `FASTA` and `FASTQ` files (and `gz` compressed versions). Supports read
 
 2. **Individual Sequence Hashing**:
     - Computes a hash for each normalised sequence
-        - fasta headers, sequence order, sequence names, and quality scores are ignored.
+    - fasta headers, sequence order, sequence names, and quality scores are ignored.
     - Provides options for considering canonical sequences
     - Allows selection of different hashing algorithms (HighwayHash, MD5, SHA2)
 
@@ -24,14 +24,17 @@ Supports `FASTA` and `FASTQ` files (and `gz` compressed versions). Supports read
 ## Basic use cases:
 
 - Generating a single hash for a dataset considering only on the nucleotide sequences
+
     ```
     hashfasta sequences.fasta
     ```
 - Detecting duplicate sequences in a dataset
+
     ```
     hashfasta -d sequences.fasta > duplicates.tsv
     ```
 - Hashing sequences from an archive, without decompressing to disk
+
     ```
     tar -xOf collection.tar.gz | hashfasta -
     ```

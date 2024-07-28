@@ -3,6 +3,7 @@ use std::hash::Hasher;
 use clap::ValueEnum;
 use hex::encode;
 use highway::{HighwayHash, HighwayHasher, Key};
+use log::error;
 use md5::{Digest as Md5Digest, Md5};
 use sha2::{Digest as Sha2Digest, Sha256};
 
@@ -27,28 +28,31 @@ pub fn calculate_hash(algorithm: &HashAlgorithm, sequence: &[u8]) -> String {
     }
 }
 
-pub fn calculate_final_hash(algorithm: &HashAlgorithm, hashes: &[String]) -> String {
+pub fn calculate_final_hash<'a, I>(algorithm: &HashAlgorithm, hashes: I) -> String
+where
+    I: Iterator<Item=&'a str>,
+{
     match algorithm {
         HashAlgorithm::Highway => {
             let key = Key([1, 2, 3, 4]);
             let mut hasher = HighwayHasher::new(key);
             for hash in hashes {
-                hasher.write_u64(hash.parse().unwrap());
+                if let Ok(value) = hash.parse::<u64>() {
+                    hasher.write_u64(value);
+                } else {
+                    error!("Failed to parse hash: {}", hash);
+                }
             }
             hasher.finalize64().to_string()
         }
         HashAlgorithm::Md5 => {
             let mut hasher = Md5::new();
-            for hash in hashes {
-                hasher.update(hash);
-            }
+            hashes.for_each(|hash| hasher.update(hash.as_bytes()));
             encode(hasher.finalize())
         }
         HashAlgorithm::Sha2 => {
             let mut hasher = Sha256::new();
-            for hash in hashes {
-                hasher.update(hash);
-            }
+            hashes.for_each(|hash| hasher.update(hash.as_bytes()));
             encode(hasher.finalize())
         }
     }

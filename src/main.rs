@@ -19,17 +19,17 @@ fn run_hash() -> Result<()> {
     let args = Cli::parse();
     let env = Env::default().filter_or("RUST_LOG", "info");
     env_logger::init_from_env(env);
+    let input_file = args.input;
 
-    for input_file in &args.input {
-        let mut all_hashes = Vec::new();
-        let mut reader: Box<dyn BufRead> = if input_file == "-" {
-            let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
-            Box::new(BufReader::new(reader))
-        } else {
-            let (reader, _) = niffler::get_reader(Box::new(File::open(input_file)?)).unwrap();
-            Box::new(BufReader::with_capacity(1024 * 64, reader))
-        };
-        info!("Processing file: {}", input_file);
+    let mut reader: Box<dyn BufRead> = if &input_file == "-" {
+        let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
+        Box::new(BufReader::new(reader))
+    } else {
+        let (reader, _) = niffler::get_reader(Box::new(File::open(&input_file)?)).unwrap();
+        Box::new(BufReader::new(reader))
+    };
+
+    info!("Processing file: {}", input_file);
 
         let file_type = if args.fasta {
             FileType::Fasta
@@ -96,11 +96,10 @@ fn run_hash() -> Result<()> {
 
         let final_hash = calculate_final_hash(&args.finalhash, &all_hashes);
 
-        println!(
-            "Final hash\t{}",
-            final_hash.if_supports_color(Stdout, |final_hash| final_hash.green())
-        );
-    }
+    println!(
+        "Final hash\t{}",
+        final_hash.if_supports_color(Stdout, |final_hash| final_hash.green())
+    );
     Ok(())
 }
 fn main() {

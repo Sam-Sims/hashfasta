@@ -7,10 +7,10 @@ use crate::hashers::HashAlgorithm;
 pub struct Cli {
     // read input, store multiple files in a vector
     #[arg(value_name = "FASTA(s)", value_parser(check_input_exists))]
-    pub input: Vec<String>,
+    pub input: String,
 
     // output individual hashes
-    #[arg(short = 'i', long = "individual", action)]
+    #[arg(short = 'i', long = "individual", action, conflicts_with = "show_duplicates")]
     pub individual_output: bool,
 
     //reverse complement mode
@@ -26,7 +26,7 @@ pub struct Cli {
     pub fastq: bool,
 
     //display duplicates
-    #[arg(short = 'd', long = "duplicates", action)]
+    #[arg(short = 'd', long = "duplicates", action, conflicts_with = "individual_output")]
     pub show_duplicates: bool,
 
     // sequence hash algorithm

@@ -1,19 +1,40 @@
 # hashfasta
 
-Very quickly compute hashes from nucleotide sequences. Supports both `fasta` and `fastq` files (and their `.gz`
-alternatives). Also supports reading from `stdin`
+Very quickly compute hashes from nucleotide sequences.
 
-In brief:
+Supports `FASTA` and `FASTQ` files (and `gz` compressed versions). Supports reading from `stdin`.
 
-1. Normalise the sequence (convert to uppercase, mask non `ATCGN` characters as `N`)
-2. Compute the hash for each sequence
-3. Compute the hash for the entire file by hashing the results of step 2
+## Overview
 
-Fasta headers, sequence order, sequence names, and quality scores are ignored. Only the nucleotide sequence is
-considered in the hash. By default, sequences are hashed using [HighwayHash](https://github.com/nickbabcock/highway-rs)
-and a final `MD5` hash is produced from each hashed sequence. The hashing algorithms for each step can be changed
-using `--seqhash` and `--finalhash`
-respectively. Supported hashing algorithms are `SHA2`, `MD5` and `HighwayHash`.
+1. **Sequence processing**:
+    - Converts all characters to uppercase
+    - Masks any non-standard nucleotides (characters other than A, T, C, G, or N) as 'N'
+
+
+2. **Individual Sequence Hashing**:
+    - Computes a hash for each normalised sequence
+        - fasta headers, sequence order, sequence names, and quality scores are ignored.
+    - Provides options for considering canonical sequences
+    - Allows selection of different hashing algorithms (HighwayHash, MD5, SHA2)
+
+
+3. **File-Level Hashing**:
+    - Generates a final hash by hashing the results from step 2
+
+## Basic use cases:
+
+- Generating a single hash for a dataset considering only on the nucleotide sequences
+    ```
+    hashfasta sequences.fasta
+    ```
+- Detecting duplicate sequences in a dataset
+    ```
+    hashfasta -d sequences.fasta > duplicates.tsv
+    ```
+- Hashing sequences from an archive, without decompressing to disk
+    ```
+    tar -xOf collection.tar.gz | hashfasta -
+    ```
 
 ## Installation
 
@@ -53,8 +74,6 @@ export PATH=$PATH:$(pwd)/target/release
 All executables will be in the directory hashfasta/target/release.
 
 ## Usage
-
-### Basic usage:
 
 ```
 Quickly compute hashes for nucleotide sequences.

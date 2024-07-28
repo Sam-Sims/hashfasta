@@ -1,31 +1,45 @@
 use clap::Parser;
 
-#[derive(Parser, Debug)]
-#[command(version, about = "Hash")]
-pub struct Cli {
-    // read input, store multiple files in a vector
-    #[arg(value_name = "FASTA(s)", value_parser(check_input_exists))]
-    pub input: Vec<String>,
+use crate::hashers::HashAlgorithm;
 
-    // output individual hashes
-    #[arg(short = 'i', long = "individual", action)]
+#[derive(Parser, Debug)]
+#[command(
+    author, version, about = "Quickly compute hashes for nucleotide sequences.", long_about = None
+)]
+pub struct Cli {
+    /// Input FASTA or FASTQ file(s). Can be GZ. Use "-" for stdin.
+    #[arg(
+        value_name = "FASTA(s)", required_unless_present = "help", value_parser(check_input_exists)
+    )]
+    pub input: String,
+
+    /// Output individual hashes for each sequence (TSV).
+    #[arg(short = 'i', long = "individual", action, conflicts_with = "show_duplicates")]
     pub individual_output: bool,
 
-    //reverse complement mode
+    /// Considers the canonical sequence (the lexicographically smaller of the two reverse complementary sequences).
     #[arg(short = 'c', long = "canonical", action)]
     pub canonical: bool,
 
-    //run md5
-    #[arg(long = "md5", action)]
-    pub md5: bool,
+    /// Force the input to be treated as FASTA format.
+    #[arg(long = "fasta", action)]
+    pub fasta: bool,
 
-    //run sha1
-    #[arg(long = "sha2", action)]
-    pub sha2: bool,
+    /// Force the input to be treated as FASTQ format.
+    #[arg(long = "fastq", action)]
+    pub fastq: bool,
 
-    //run highwayhash
-    #[arg(long = "highway", action)]
-    pub highway: bool,
+    /// Output duplicates sequences (TSV).
+    #[arg(short = 'd', long = "duplicates", action, conflicts_with = "individual_output")]
+    pub show_duplicates: bool,
+
+    /// Specify the algorithm to use for hashing sequences.
+    #[arg(long = "seqhash", default_value = "highway")]
+    pub seqhash: HashAlgorithm,
+
+    /// Specify the algorithm to use for calculating the final hash.
+    #[arg(long = "finalhash", default_value = "md5")]
+    pub finalhash: HashAlgorithm,
 }
 
 fn check_input_exists(s: &str) -> Result<String, String> {

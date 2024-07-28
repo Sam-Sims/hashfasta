@@ -1,128 +1,124 @@
-use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+#![feature(slice_partition_dedup)]
 
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, Cursor, Read};
+
+use anyhow::{Context, Result};
 use clap::Parser;
 use env_logger::Env;
-use log::{info, warn};
-use noodles::fasta;
+use log::{error, info, warn};
 use owo_colors::{OwoColorize, Stream::Stdout};
 
 use cli::Cli;
-use hashers::{calculate_final_hash, calculate_hash, HashAlgorithm};
+use hashers::calculate_final_hash;
+use parser::{auto_determine_file_type, FileType};
 
 mod cli;
 mod hashers;
+mod parser;
+mod para_parser;
 
-const LOOKUP_TABLE: [u8; 256] = [
-    //A = 1 C = 2 G = 3 T = 4
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+fn run_hash() -> Result<()> {
+    let args = Cli::parse();
+    let env = Env::default().filter_or("RUST_LOG", "info");
+    env_logger::init_from_env(env);
+    let input_file = args.input;
 
-const RC_LOOKUP_TABLE: [u8; 256] = [
-    //A = 1 C = 2 G = 3 T = 4
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 4, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 4, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+    let mut reader: Box<dyn BufRead> = if &input_file == "-" {
+        let (reader, _) = niffler::get_reader(Box::new(io::stdin().lock())).unwrap();
+        Box::new(BufReader::new(reader))
+    } else {
+        let (reader, _) = niffler::get_reader(Box::new(File::open(&input_file)?)).unwrap();
+        Box::new(BufReader::new(reader))
+    };
 
-fn lookup(x: u8) -> u8 {
-    LOOKUP_TABLE[x as usize]
-}
+    info!("Processing file: {}", input_file);
 
-fn rc_lookup(x: u8) -> u8 {
-    RC_LOOKUP_TABLE[x as usize]
-}
+    let file_type = if args.fasta {
+        FileType::Fasta
+    } else if args.fastq {
+        FileType::Fastq
+    } else {
+        let mut first_lines = String::new();
+        let mut line_count = 0;
 
-pub fn process_fasta_reader(
-    reader: Box<dyn BufRead>,
-    output_individual: bool,
-    reverse: bool,
-    algorithm: &HashAlgorithm,
-) -> io::Result<Vec<String>> {
-    let mut reader = fasta::Reader::new(reader);
-    let mut hashes = Vec::new();
-    let mut duplicates = Vec::new();
+        // Start iterating over the first 100 lines of the reader
+        for line in reader.by_ref().lines() {
+            let line = line?;
+            first_lines.push_str(&line);
+            first_lines.push('\n');
+            line_count += 1;
 
-    for result in reader.records() {
-        let record = result?;
-        let record_name = std::str::from_utf8(record.name()).unwrap().to_string();
-        let seq = record.sequence().as_ref();
-        let mut normal_seq = seq.iter().map(|&x| lookup(x)).collect::<Vec<u8>>();
-        if reverse {
-            let mut rc_seq = seq.iter().map(|&x| rc_lookup(x)).collect::<Vec<u8>>();
-            rc_seq.reverse();
-            if rc_seq < normal_seq {
-                normal_seq = rc_seq;
+            if line_count >= 100 {
+                break;
             }
         }
-        let hash = calculate_hash(algorithm, &normal_seq);
-        if output_individual {
+        // Send the first 100 lines to use in determining the file type
+        let determined_type = auto_determine_file_type(&first_lines);
+        // Create a new reader that combiness the first 100 lines we just read with the original reader
+        let combined_reader = Cursor::new(first_lines).chain(reader);
+        // Replace our original reader with this new combined reader
+        reader = Box::new(BufReader::new(combined_reader));
+        determined_type
+    };
+
+    let mut file_hashes = match file_type {
+        FileType::Fasta => parser::fasta_reader(
+            reader,
+            args.canonical,
+            &args.seqhash,
+        )
+            .context("Error parsing FASTA file")?,
+        FileType::Fastq => parser::fastq_reader(
+            reader,
+            args.canonical,
+            &args.seqhash,
+        )
+            .context("Error parsing FASTQ file")?,
+        FileType::Unknown => {
+            return Err(anyhow::anyhow!("Unable to determine the file type from the first 100 lines. Please specify --fasta or --fastq."));
+        }
+    };
+
+    if args.individual_output {
+        println!("{}\t{}", "Record Name", "Hash");
+        for (record_name, hash) in &file_hashes {
             println!(
                 "{}\t{}",
                 record_name.if_supports_color(Stdout, |record_name| record_name.white()),
                 hash.if_supports_color(Stdout, |hash| hash.green())
             );
         }
-        if hashes.contains(&hash) {
-            duplicates.push(record_name);
+    }
+
+    file_hashes.sort_by(|a, b| a.1.cmp(&b.1));
+    let (_, duplicate_hashes) = file_hashes.partition_dedup_by_key(|hash| hash.1.clone());
+
+    if !duplicate_hashes.is_empty() {
+        if args.show_duplicates {
+            println!("{}\t{}", "Record Name", "Hash");
+            for (record_name, hash) in duplicate_hashes {
+                println!(
+                    "{}\t{}",
+                    record_name.if_supports_color(Stdout, |record_name| record_name.white()),
+                    hash.if_supports_color(Stdout, |hash| hash.green())
+                );
+            }
         }
-        hashes.push(hash);
-    }
-    if !duplicates.is_empty() {
-        warn!("Duplicates found:");
-        for duplicate in duplicates {
-            warn!("{}", duplicate);
-        }
-    }
-    Ok(hashes)
-}
-
-fn main() -> io::Result<()> {
-    let args = Cli::parse();
-    let env = Env::default()
-        .filter_or("MY_LOG_LEVEL", "trace")
-        .write_style_or("MY_LOG_STYLE", "always");
-
-    env_logger::init_from_env(env);
-
-    let algorithm = match (args.md5, args.highway) {
-        (true, _) => HashAlgorithm::Md5,
-        (_, true) => HashAlgorithm::Highway,
-        _ => HashAlgorithm::Sha2,
-    };
-
-    for fasta_file in &args.input {
-        let mut all_hashes = Vec::new();
-        let reader: Box<dyn BufRead> = if fasta_file == "-" {
-            Box::new(io::stdin().lock())
-        } else {
-            Box::new(BufReader::new(File::open(fasta_file).unwrap()))
-        };
-        info!("Processing file: {}", fasta_file);
-        let file_hashes =
-            process_fasta_reader(reader, args.individual_output, args.canonical, &algorithm)?;
-        all_hashes.extend(file_hashes);
-
-        all_hashes.sort();
-        let final_hash = calculate_final_hash(&algorithm, &all_hashes);
-
-        println!(
-            "Final hash\t{}",
-            final_hash.if_supports_color(Stdout, |final_hash| final_hash.green())
-        );
+        warn!("Duplicates found!");
     }
 
+    let final_hash = calculate_final_hash(&args.finalhash, file_hashes.iter().map(|(_, hash)| hash.as_str()));
+
+    println!(
+        "Final hash\t{}",
+        final_hash.if_supports_color(Stdout, |final_hash| final_hash.green())
+    );
     Ok(())
+}
+fn main() {
+    if let Err(err) = run_hash() {
+        error!("{}", err);
+        std::process::exit(1);
+    }
 }

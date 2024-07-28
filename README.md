@@ -1,34 +1,43 @@
 # hashfasta
 
-Very quickly compute hashes from nucleotide sequences. Supports both `fasta` and `fastq` files (and their `.gz`
-alternatives) or `stdin`.
+Very quickly compute hashes from nucleotide sequences.
 
-1. Normalise the sequence (convert to uppercase, mask non `ATCGN` characters as `N`)
-2. Compute the hash for each sequence
-3. Compute the hash for the entire file by hashing the results of step 2
+Supports `FASTA` and `FASTQ` files (and `gz` compressed versions). Supports reading from `stdin`.
 
-Fasta headers, sequence order, sequence names, and quality scores are ignored. Only the nucleotide sequence is
-considered in the hash. By default outputs the final hash, but can output individual hashes with `-i`. Outputs are in
-tab-separated format with the sequence name in the first column and the hash in the second.
+## Overview
 
-## Hashing algorithms
+1. **Sequence processing**:
+    - Converts all characters to uppercase
+    - Masks any non-standard nucleotides (characters other than A, T, C, G, or N) as 'N'
 
-The code provides functionality for hashing sequences using different algorithms. By default, SHA-2 is used for hashing,
-but users can specify MD5 or [HighwayHash](https://github.com/nickbabcock/highway-rs) through command-line options.
 
-Available Hashing Algorithms
+2. **Individual Sequence Hashing**:
+    - Computes a hash for each normalised sequence
+    - fasta headers, sequence order, sequence names, and quality scores are ignored.
+    - Provides options for considering canonical sequences
+    - Allows selection of different hashing algorithms (HighwayHash, MD5, SHA2)
 
-    SHA-2 (default):
-        Produces a 256-bit hash value.
-        Used when no specific algorithm is specified by the user.
 
-    MD5:
-        Produces a 128-bit hash value.
-        Can be used by specifying the --md5 option in the command line.
+3. **File-Level Hashing**:
+    - Generates a final hash by hashing the results from step 2
 
-    HighwayHash:
-        Produces a 64-bit hash value.
-        Can be used by specifying the --highway option in the command line.
+## Basic use cases:
+
+- Generating a single hash for a dataset considering only on the nucleotide sequences
+
+    ```
+    hashfasta sequences.fasta
+    ```
+- Detecting duplicate sequences in a dataset
+
+    ```
+    hashfasta -d sequences.fasta > duplicates.tsv
+    ```
+- Hashing sequences from an archive, without decompressing to disk
+
+    ```
+    tar -xOf collection.tar.gz | hashfasta -
+    ```
 
 ## Installation
 
@@ -69,41 +78,23 @@ All executables will be in the directory hashfasta/target/release.
 
 ## Usage
 
-### Basic usage:
-
-```bash
-hashfasta <fast[a|q]> [options]
 ```
+Quickly compute hashes for nucleotide sequences.
 
-### Examples:
+Usage: hashfasta [OPTIONS] <FASTA(s)>
 
-You compress several fasta files into a tar archive and want to ensure that nothing was changed:
+Arguments:
+  <FASTA(s)>  Input FASTA or FASTQ file(s). Can be GZ. Use "-" for stdin
 
-```bash
-tar -xOvf collection.tar.gz | hash -
+Options:
+  -i, --individual             Output individual hashes for each sequence (TSV)
+  -c, --canonical              Considers the canonical sequence (the lexicographically smaller of the two reverse complementary sequences) when hashing
+      --fasta                  Force the input to be treated as FASTA format
+      --fastq                  Force the input to be treated as FASTQ format
+  -d, --duplicates             Output duplicates sequences (TSV)
+      --seqhash <SEQHASH>      Specify the algorithm to use for hashing sequences [default: highway] [possible values: highway, md5, sha2]
+      --finalhash <FINALHASH>  Specify the algorithm to use for calculating the final hash [default: md5] [possible values: highway, md5, sha2]
+  -h, --help                   Print help
+  -V, --version                Print version
+
 ```
-
-You decompress several fasta files from a tar archive and want to ensure that nothing was changed:
-
-```bash
-cat *.fasta | hash -
-```
-
-You want to compute an individual checksum for several fasta files
-
-```bash
-hash *.fasta
-```
-
-### Options:
-
-### Input
-
-The input can
-
-### Canonical
-
-`-c, --canonical` | Default: `false`
-
-The canonical option considers the canonical sequence (the lexicographically smaller of the two reverse complementary
-sequences) when hashing.

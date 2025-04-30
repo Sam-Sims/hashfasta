@@ -16,7 +16,6 @@ use parser::{auto_determine_file_type, FileType};
 mod cli;
 mod hashers;
 mod parser;
-mod para_parser;
 
 fn run_hash() -> Result<()> {
     let args = Cli::parse();

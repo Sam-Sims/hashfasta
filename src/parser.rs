@@ -1,161 +1,166 @@
-use std::io::BufRead;
+use crate::hash::{self, SequenceHash};
+use color_eyre::Result;
+use paraseq::{fastx, BoxedReader};
+use paraseq::prelude::*;
+use paraseq::Result as ParaseqResult;
+use parking_lot::Mutex;
+use serde::Serialize;
+use std::path::Path;
+use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use noodles::fasta;
-use noodles::fastq;
-
-use crate::hashers::{calculate_hash, HashAlgorithm};
-
-const LOOKUP_TABLE: [u8; 256] = [
-    //A = 1 C = 2 G = 3 T = 4
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
-const RC_LOOKUP_TABLE: [u8; 256] = [
-    //A = 1 C = 2 G = 3 T = 4
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 4, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 4, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
-
-#[inline(always)]
-pub fn lookup(x: u8) -> u8 {
-    LOOKUP_TABLE[x as usize]
+#[derive(Clone, Serialize)]
+pub struct HashRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub hash: SequenceHash,
 }
 
-#[inline(always)]
-pub fn rc_lookup(x: u8) -> u8 {
-    RC_LOOKUP_TABLE[x as usize]
+#[derive(Clone)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct RecordProcessor {
+    pub results: Arc<Mutex<Vec<HashRecord>>>,
+    pub normalise: bool,
+    pub canonicalise: bool,
+    pub include_ids: bool,
+    pub strict: bool,
 }
 
-/// Trait to allow trimming ascii whitespace from a &[u8].
-pub trait SliceExt {
-    fn trim(&self) -> &Self;
+impl RecordProcessor {
+    #[allow(clippy::fn_params_excessive_bools)]
+    pub fn new(normalise: bool, canonical: bool, include_ids: bool, strict: bool) -> Self {
+        Self {
+            results: Arc::new(Mutex::new(Vec::new())),
+            normalise,
+            canonicalise: canonical,
+            include_ids,
+            strict,
+        }
+    }
 }
 
-impl SliceExt for [u8] {
-    /// https://stackoverflow.com/questions/31101915/how-to-implement-trim-for-vecu8
-    ///
-    /// Trim ascii whitespace (based on is_ascii_whitespace())
-    /// from the start and end of &\[u8\].
-    ///
-    /// Returns &\[u8\] with leading and trailing whitespace removed.
-    fn trim(&self) -> &[u8] {
-        let from = match self.iter().position(|x| !x.is_ascii_whitespace()) {
-            Some(i) => i,
-            None => return &self[0..0],
+impl<Rf: Record> ParallelProcessor<Rf> for RecordProcessor {
+    fn process_record(&mut self, record: Rf) -> ParaseqResult<()> {
+        let seq = record.seq();
+        if self.strict {
+            validate_sequence(seq.as_ref(), record.id())?;
+        }
+        let hash = hash::hash_sequence_bytes(seq.as_ref(), self.normalise, self.canonicalise);
+        let id = if self.include_ids {
+            Some(String::from_utf8_lossy(record.id()).to_string())
+        } else {
+            None
         };
-        let to = self.iter().rposition(|x| !x.is_ascii_whitespace()).unwrap();
-        &self[from..=to]
+
+        let mut lock = self.results.lock();
+        lock.push(HashRecord { id, hash });
+
+        Ok(())
     }
 }
 
-pub enum FileType {
-    Fasta,
-    Fastq,
-    Unknown,
+fn is_valid_base(base: u8) -> bool {
+    matches!(
+        base,
+        b'A' | b'C' | b'G' | b'T' | b'U' | b'N' | b'-' | b'a' | b'c' | b'g' | b't' | b'u' | b'n'
+    )
 }
 
-pub fn fasta_reader(
-    reader: Box<dyn BufRead>,
+fn validate_sequence(seq: &[u8], id: &[u8]) -> ParaseqResult<()> {
+    for &base in seq {
+        if !is_valid_base(base) {
+            let id_display = String::from_utf8_lossy(id).to_string();
+            let message = format!("Record {id_display} contains an invalid base.");
+            let err = std::io::Error::new(std::io::ErrorKind::InvalidData, message);
+            return Err(err.into());
+        }
+    }
+    Ok(())
+}
+
+fn is_http_url(input: &str) -> bool {
+    input.starts_with("http://") || input.starts_with("https://")
+}
+
+fn is_ssh_path(input: &str) -> bool {
+    input.starts_with("ssh://")
+}
+
+fn open_fastx_reader(input: &str) -> Result<fastx::Reader<BoxedReader>> {
+    if input == "-" {
+        return Ok(fastx::Reader::from_stdin()?);
+    }
+
+    if is_http_url(input) {
+        return Ok(fastx::Reader::from_url(input)?);
+    }
+
+    if is_ssh_path(input) {
+        return Ok(fastx::Reader::from_ssh(input)?);
+    }
+
+    Ok(fastx::Reader::from_path(Path::new(input))?)
+}
+
+#[allow(clippy::fn_params_excessive_bools)]
+pub fn hash_fastx_file<P: AsRef<Path>>(
+    path: P,
+    num_threads: usize,
+    normalise: bool,
     canonical: bool,
-    algorithm: &HashAlgorithm,
-) -> Result<Vec<(String, String)>> {
-    let mut reader = fasta::Reader::new(reader);
-    let mut hashes = Vec::new();
-    let mut buffer = Vec::new();
-
-    for result in reader.records() {
-        let record = result.context("Error reading FASTA record")?;
-        let record_name = String::from_utf8_lossy(record.name())
-            .to_string();
-        let seq = record.sequence().as_ref().trim();
-
-        buffer.clear();
-        buffer.reserve(seq.len());
-        buffer.extend(seq.iter().map(|&x| lookup(x)));
-
-        if canonical {
-            let mut rc_seq: Vec<_> = seq.iter().map(|&x| rc_lookup(x)).collect();
-            rc_seq.reverse();
-            if rc_seq < buffer {
-                buffer = rc_seq;
-            }
-        }
-
-        let hash = calculate_hash(algorithm, &buffer);
-        hashes.push((record_name, hash));
-    }
-
-    Ok(hashes)
-}
-
-
-pub fn fastq_reader(
-    reader: Box<dyn BufRead>,
-    canonical: bool,
-    algorithm: &HashAlgorithm,
-) -> Result<Vec<(String, String)>> {
-    let mut reader = fastq::Reader::new(reader);
-    let mut hashes = Vec::new();
-    let mut buffer = Vec::new();
-
-    for result in reader.records() {
-        let record = result.context("Error reading FASTQ record")?;
-        let record_name = String::from_utf8_lossy(record.name()).into_owned();
-        let seq = record.sequence().trim();
-
-        buffer.clear();
-        buffer.reserve(seq.len());
-        buffer.extend(seq.iter().map(|&x| lookup(x)));
-
-        if canonical {
-            let mut rc_seq: Vec<_> = seq.iter().map(|&x| rc_lookup(x)).collect();
-            rc_seq.reverse();
-            if rc_seq < buffer {
-                buffer = rc_seq;
-            }
-        }
-
-        let hash = calculate_hash(algorithm, &buffer);
-        hashes.push((record_name, hash));
-    }
-    Ok(hashes)
-}
-
-pub fn auto_determine_file_type(content: &str) -> FileType {
-    let mut is_fastq = false;
-    let mut is_fasta = false;
-
-    for (i, line) in content.lines().enumerate() {
-        if i % 4 == 0 && line.starts_with('@') {
-            is_fastq = true;
-            break;
-        }
-        if line.starts_with('>') {
-            is_fasta = true;
-        }
-        if i >= 100 {
-            break;
-        }
-    }
-
-    if is_fastq {
-        FileType::Fastq
-    } else if is_fasta {
-        FileType::Fasta
+    include_ids: bool,
+    strict: bool,
+) -> Result<Vec<HashRecord>> {
+    let path_ref = path.as_ref();
+    let reader = if let Some(path_str) = path_ref.to_str() {
+        open_fastx_reader(path_str)?
+    } else if path_ref == Path::new("-") {
+        fastx::Reader::from_stdin()?
     } else {
-        FileType::Unknown
+        fastx::Reader::from_path(path_ref)?
+    };
+
+    let mut processor = RecordProcessor::new(normalise, canonical, include_ids, strict);
+
+    reader.process_parallel(&mut processor, num_threads)?;
+
+    let final_hashes = processor.results.lock().clone();
+    Ok(final_hashes)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_is_valid_base_valid() {
+        let valid_bases = b"ACGTUN-acgtnu";
+        for &base in valid_bases {
+            assert!(super::is_valid_base(base), "Base {} should be valid", base as char);
+        }
+    }
+
+    #[test]
+    fn test_is_valid_base_invalid() {
+        let invalid_bases = b"XYZ#@!123";
+        for &base in invalid_bases {
+            assert!(!super::is_valid_base(base), "Base {} should be invalid", base as char);
+        }
+    }
+
+    #[test]
+    fn test_is_ssh_path_only_accepts_ssh_scheme() {
+        assert!(super::is_ssh_path("ssh://user@example.com/path/to/file.fastq"));
+        assert!(super::is_ssh_path("ssh://example.com:2222/path/to/file.fastq"));
+        assert!(!super::is_ssh_path("/tmp/file.fastq"));
+        assert!(!super::is_ssh_path("./relative.fastq"));
+        assert!(!super::is_ssh_path("../relative.fastq"));
+    }
+
+    #[test]
+    fn test_is_http_url_only_accepts_http_and_https() {
+        assert!(super::is_http_url("http://example.com/file.fastq"));
+        assert!(super::is_http_url("https://example.com/file.fastq"));
+        assert!(!super::is_http_url("/blah/blah.fastq"));
+        assert!(!super::is_http_url("./blah.fastq"));
+        assert!(!super::is_http_url("../blah.fastq"));
+
     }
 }

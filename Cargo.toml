@@ -1,7 +1,14 @@
 [package]
 name = "hashfasta"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+authors = ["Samuel Sims"]
+description = "Very quickly compute hashes for FASTA/FASTQ files considering **only** the sequence content."
+readme = "README.md"
+repository = "https://github.com/Sam-Sims/hashfasta"
+license = "MIT"
+keywords = ["hash", "bioinformatics", "fasta", "fastq", "sequencing"]
+categories = ["command-line-utilities", "science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -2,6 +2,7 @@
 ![crates.io](https://img.shields.io/crates/v/hashfasta)
 [![test](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml)
 [![check](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml)
+![MSRV](https://img.shields.io/badge/MSRV-1.78.0-blue)
 
 # hashfasta
 

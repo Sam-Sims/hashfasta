@@ -43,3 +43,4 @@ jobs:
         with:
           executable-name: hashfasta
           target: ${{ matrix.platform.target }}
+          changes-file: CHANGELOG.md

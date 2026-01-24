@@ -1,56 +1,36 @@
+![GitHub release (with filter)](https://img.shields.io/github/v/release/Sam-Sims/hashfasta)
+![crates.io](https://img.shields.io/crates/v/hashfasta)
+[![test](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml)
+[![check](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml)
+![MSRV](https://img.shields.io/badge/MSRV-1.87.0-blue)
+
 # hashfasta
 
-Very quickly compute hashes from nucleotide sequences.
+**hash** **fasta** (faster?)
 
-Supports `FASTA` and `FASTQ` files (and `gz` compressed versions). Supports reading from `stdin`.
+Very quickly compute hashes for FASTA/FASTQ files considering **only** the sequence content.
 
-## Overview
+Hashfasta produces a hash for an input file that is stable and dependent **only** on the sequence content. It ignores:
+- FASTA/FASTQ headers
+- Quality scores
+- Read order
 
-1. **Sequence processing**:
-    - Converts all characters to uppercase
-    - Masks any non-standard nucleotides (characters other than A, T, C, G, or N) as 'N'
+It can optionally consider only the canonical sequence (the lexicographically smaller of the forward and reverse complement) and/or normalise sequences before hashing. See [Sequence handling options](#sequence-handling-options).
 
-
-2. **Individual Sequence Hashing**:
-    - Computes a hash for each normalised sequence
-    - fasta headers, sequence order, sequence names, and quality scores are ignored.
-    - Provides options for considering canonical sequences
-    - Allows selection of different hashing algorithms (HighwayHash, MD5, SHA2)
-
-
-3. **File-Level Hashing**:
-    - Generates a final hash by hashing the results from step 2
-
-## Basic use cases:
-
-- Generating a single hash for a dataset considering only on the nucleotide sequences
-
-    ```
-    hashfasta sequences.fasta
-    ```
-- Detecting duplicate sequences in a dataset
-
-    ```
-    hashfasta -d sequences.fasta > duplicates.tsv
-    ```
-- Hashing sequences from an archive, without decompressing to disk
-
-    ```
-    tar -xOf collection.tar.gz | hashfasta -
-    ```
+It supports `FASTA` and `FASTQ` files (optionally compressed with `gz`) as input, and can read via http/https, SSH and stdin.
 
 ## Installation
 
 ### Binaries:
 
 Precompiled binaries for Linux, MacOS and Windows are attached to the latest
-release [0.1.0](https://github.com/Sam-Sims/ambigviz/releases/tag/v0.1.0)
+release.
 
 ### Cargo:
 
 Requires [cargo](https://www.rust-lang.org/tools/install)
 
-```
+```bash
 cargo install hashfasta
 ```
 
@@ -74,27 +54,131 @@ cargo build --release
 export PATH=$PATH:$(pwd)/target/release
 ```
 
-All executables will be in the directory hashfasta/target/release.
+All executables will be in the directory `hashfasta/target/release`.
 
 ## Usage
+```bash
+Very quickly compute hashes for FASTX files considering **only** the sequence content.
 
-```
-Quickly compute hashes for nucleotide sequences.
+Usage: hashfasta <COMMAND>
 
-Usage: hashfasta [OPTIONS] <FASTA(s)>
-
-Arguments:
-  <FASTA(s)>  Input FASTA or FASTQ file(s). Can be GZ. Use "-" for stdin
+Commands:
+  hash       Hash every record in the input and output a final aggregate_hash representing the sequence content of the entire file.
+  unique     Output only the records whose sequences are unique within the input.
+  duplicate  Output only the records whose sequences are duplicates of earlier records.
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
-  -i, --individual             Output individual hashes for each sequence (TSV)
-  -c, --canonical              Considers the canonical sequence (the lexicographically smaller of the two reverse complementary sequences) when hashing
-      --fasta                  Force the input to be treated as FASTA format
-      --fastq                  Force the input to be treated as FASTQ format
-  -d, --duplicates             Output duplicates sequences (TSV)
-      --seqhash <SEQHASH>      Specify the algorithm to use for hashing sequences [default: highway] [possible values: highway, md5, sha2]
-      --finalhash <FINALHASH>  Specify the algorithm to use for calculating the final hash [default: md5] [possible values: highway, md5, sha2]
-  -h, --help                   Print help
-  -V, --version                Print version
+  -h, --help     Print help
+  -V, --version  Print version
+```
 
+### Subcommands
+
+Each subcommand takes a single positional argument `<FASTX>` which is the path/URL to the input FASTA/FASTQ file (or `-` for stdin).
+By default, output is written to stdout in tab-separated format. Use `--json` to output in JSON format. See [Output Formats](#output-format).
+
+#### `hash`
+
+Hash every record in the input and output a final "aggregate_hash" representing the seqeunce content of the entire file. Suppress per-record output with `-q/--quiet`.
+
+```bash
+hashfasta hash [OPTIONS] <FASTX>
+```
+
+#### `unique`
+
+Output only the records whose sequences are unique within the input. Useful for deduplicating records.
+
+```bash
+hashfasta unique [OPTIONS] <FASTX>
+```
+
+#### `duplicate`
+
+Output only the records whose sequences are duplicates of earlier records.
+
+```bash
+hashfasta duplicate [OPTIONS] <FASTX>
+```
+
+### Options
+
+All subcommands share the following options:
+
+- `-c, --canonical`:  Use the canonical sequence. See [Canonicalisation](#canonicalisation--c---canonical).
+- `-n, --normalise`: Normalise sequences before hashing. See [Normalisation](#normalisation----normalise).
+- `-s, --strict`: Fail if non-ACGTUN- bases are encountered.
+- `-t, --threads`: Number of threads [default: 1].
+- `-j, --json`: Output records as JSON instead of TSV.
+- `-q, --quiet`: Only print the aggregate hash (suppress record-level output).
+
+### Sequence handling options
+
+#### Normalisation (`-n` / `--normalise`)
+
+Normalisation ensures that sequences are treated consistently regardless of case or RNA/DNA differences. It performs the following:
+- Converts all characters to uppercase.
+- Converts Uracil (`U`) to Thymine (`T`).
+- Masks any non-standard nucleotides (i.e characters other than `ACGTU-`) as `N`.
+
+#### Canonicalisation (`-c` / `--canonical`)
+
+Canonicalisation does the following:
+1. Generates the reverse complement of the sequence.
+2. Compares the original sequence with its reverse complement lexicographically.
+3. Hashes the "smaller" of the two sequences.
+
+This ensures that a sequence and its reverse complement will always produce the same hash.
+
+### Examples
+
+```bash
+# Generate hashes for a single fasta file
+hashfasta hash sequences.fasta
+
+# Hash a compressed file normalising sequences, and consider canonical sequences
+hashfasta hash -cn reads.fq.gz
+
+# Fail early if invalid bases are encountered
+hashfasta hash --strict input.fasta
+
+# Output as JSON, instead of TSV
+hashfasta hash --json input.fasta
+
+# Read from stdin
+tar -xOf collection.tar.gz | hashfasta hash -
+
+# Read from HTTP
+hashfasta hash https://example.com/sequences.fasta
+
+# Read from SSH
+hashfasta hash ssh://user@host/path/to/sequences.fasta
+```
+
+### Output Format
+
+**Default (TSV):**
+```tsv
+id	hash
+seq1	537edb87f29c16e5
+seq2	2cbf6181d9bdb039
+aggregate_hash	02402baf8722f975
+```
+
+**JSON (`--json`):**
+```json
+{
+  "records": [
+    {
+      "id": "seq1",
+      "hash": "537edb87f29c16e5"
+    },
+    {
+      "id": "seq2",
+      "hash": "2cbf6181d9bdb039"
+    }
+  ],
+  "aggregate_hash": "02402baf8722f975"
+}
 ```

@@ -1,54 +1,96 @@
-use clap::Parser;
-
-use crate::hashers::HashAlgorithm;
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(
-    author, version, about = "Quickly compute hashes for nucleotide sequences.", long_about = None
+    author, version, about = "Very quickly compute hashes for FASTX files considering **only** the sequence content.", long_about = None
 )]
 pub struct Cli {
-    /// Input FASTA or FASTQ file(s). Can be GZ. Use "-" for stdin.
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    #[command(
+        about = "Hash every record in the input and output a final aggregate_hash representing the sequence content of the entire file."
+    )]
+    Hash(HashArgs),
+    #[command(about = "Output only the records whose sequences are unique within the input.")]
+    Unique(ModeArgs),
+    #[command(
+        about = "Output only the records whose sequences are duplicates of earlier records."
+    )]
+    Duplicate(ModeArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct CommonArgs {
     #[arg(
-        value_name = "FASTA(s)", required_unless_present = "help", value_parser(check_input_exists)
+        value_name = "FASTX",
+        required_unless_present = "help",
+        help = "Path/URL to input FASTA/FASTQ file, or - for stdin"
     )]
     pub input: String,
 
-    /// Output individual hashes for each sequence (TSV).
-    #[arg(short = 'i', long = "individual", action, conflicts_with = "show_duplicates")]
-    pub individual_output: bool,
-
-    /// Considers the canonical sequence (the lexicographically smaller of the two reverse complementary sequences).
-    #[arg(short = 'c', long = "canonical", action)]
+    #[arg(
+        short = 'c',
+        long = "canonical",
+        help = "Use the canonical sequence (lexicographically smaller of forward and reverse complement)",
+        action
+    )]
     pub canonical: bool,
 
-    /// Force the input to be treated as FASTA format.
-    #[arg(long = "fasta", action)]
-    pub fasta: bool,
+    #[arg(
+        short = 'n',
+        long = "normalise",
+        alias = "normalize",
+        help = "Normalise sequences before hashing",
+        action
+    )]
+    pub normalise: bool,
 
-    /// Force the input to be treated as FASTQ format.
-    #[arg(long = "fastq", action)]
-    pub fastq: bool,
+    #[arg(
+        short = 's',
+        long = "strict",
+        help = "Fail on non-ACGTUN- bases",
+        action
+    )]
+    pub strict: bool,
 
-    /// Output duplicates sequences (TSV).
-    #[arg(short = 'd', long = "duplicates", action, conflicts_with = "individual_output")]
-    pub show_duplicates: bool,
+    #[arg(
+        short = 'j',
+        long = "json",
+        help = "Output records as JSON instead of TSV",
+        action
+    )]
+    pub json: bool,
 
-    /// Specify the algorithm to use for hashing sequences.
-    #[arg(long = "seqhash", default_value = "highway")]
-    pub seqhash: HashAlgorithm,
-
-    /// Specify the algorithm to use for calculating the final hash.
-    #[arg(long = "finalhash", default_value = "md5")]
-    pub finalhash: HashAlgorithm,
+    #[arg(
+        short = 't',
+        long = "threads",
+        default_value_t = 1,
+        help = "Number of worker threads"
+    )]
+    pub threads: usize,
 }
 
-fn check_input_exists(s: &str) -> Result<String, String> {
-    if s == "-" {
-        return Ok(s.to_string());
-    }
-    if std::path::Path::new(s).exists() {
-        Ok(s.to_string())
-    } else {
-        Err(format!("File does not exist: {}", s))
-    }
+#[derive(Args, Debug, Clone)]
+pub struct ModeArgs {
+    #[command(flatten)]
+    pub common: CommonArgs,
+}
+
+#[derive(Args, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct HashArgs {
+    #[command(flatten)]
+    pub common: CommonArgs,
+
+    #[arg(
+        short = 'q',
+        long = "quiet",
+        help = "Only print the aggregate hash (suppress record-level output)",
+        action
+    )]
+    pub quiet: bool,
 }

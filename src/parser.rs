@@ -1,8 +1,8 @@
 use crate::hash::{self, SequenceHash};
 use color_eyre::Result;
-use paraseq::{fastx, BoxedReader};
 use paraseq::prelude::*;
 use paraseq::Result as ParaseqResult;
+use paraseq::{fastx, BoxedReader};
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::path::Path;
@@ -133,7 +133,11 @@ mod tests {
     fn test_is_valid_base_valid() {
         let valid_bases = b"ACGTUN-acgtnu";
         for &base in valid_bases {
-            assert!(super::is_valid_base(base), "Base {} should be valid", base as char);
+            assert!(
+                super::is_valid_base(base),
+                "Base {} should be valid",
+                base as char
+            );
         }
     }
 
@@ -141,14 +145,22 @@ mod tests {
     fn test_is_valid_base_invalid() {
         let invalid_bases = b"XYZ#@!123";
         for &base in invalid_bases {
-            assert!(!super::is_valid_base(base), "Base {} should be invalid", base as char);
+            assert!(
+                !super::is_valid_base(base),
+                "Base {} should be invalid",
+                base as char
+            );
         }
     }
 
     #[test]
     fn test_is_ssh_path_only_accepts_ssh_scheme() {
-        assert!(super::is_ssh_path("ssh://user@example.com/path/to/file.fastq"));
-        assert!(super::is_ssh_path("ssh://example.com:2222/path/to/file.fastq"));
+        assert!(super::is_ssh_path(
+            "ssh://user@example.com/path/to/file.fastq"
+        ));
+        assert!(super::is_ssh_path(
+            "ssh://example.com:2222/path/to/file.fastq"
+        ));
         assert!(!super::is_ssh_path("/tmp/file.fastq"));
         assert!(!super::is_ssh_path("./relative.fastq"));
         assert!(!super::is_ssh_path("../relative.fastq"));
@@ -161,6 +173,5 @@ mod tests {
         assert!(!super::is_http_url("/blah/blah.fastq"));
         assert!(!super::is_http_url("./blah.fastq"));
         assert!(!super::is_http_url("../blah.fastq"));
-
     }
 }

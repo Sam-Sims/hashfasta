@@ -11,11 +11,15 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(about = "Hash every record in the input and output a final aggregate_hash representing the sequence content of the entire file.")]
+    #[command(
+        about = "Hash every record in the input and output a final aggregate_hash representing the sequence content of the entire file."
+    )]
     Hash(HashArgs),
     #[command(about = "Output only the records whose sequences are unique within the input.")]
     Unique(ModeArgs),
-    #[command(about = "Output only the records whose sequences are duplicates of earlier records.")]
+    #[command(
+        about = "Output only the records whose sequences are duplicates of earlier records."
+    )]
     Duplicate(ModeArgs),
 }
 

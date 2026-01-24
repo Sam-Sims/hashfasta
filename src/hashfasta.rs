@@ -4,8 +4,8 @@ use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use log::{info, warn};
 use serde::Serialize;
-use std::io::{self, Write};
 use std::collections::HashMap;
+use std::io::{self, Write};
 
 #[derive(Serialize)]
 struct RecordsPayload<'a, T> {
@@ -180,7 +180,8 @@ impl Hashfasta {
 
     fn run_hash(args: &HashArgs) -> Result<()> {
         let hash_records = Self::go_hash(&args.common, false, !args.quiet)?;
-        let hashes: Vec<hash::SequenceHash> = hash_records.iter().map(|record| record.hash).collect();
+        let hashes: Vec<hash::SequenceHash> =
+            hash_records.iter().map(|record| record.hash).collect();
         let final_hash = hash::calculate_final_hash(&hashes);
 
         // quiet mode only prints the final hash and exits

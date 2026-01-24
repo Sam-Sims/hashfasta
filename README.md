@@ -1,7 +1,7 @@
 ![GitHub release (with filter)](https://img.shields.io/github/v/release/Sam-Sims/hashfasta)
 ![crates.io](https://img.shields.io/crates/v/hashfasta)
-[![test](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yaml)
-[![check](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yaml)
+[![test](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/test.yml)
+[![check](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yml/badge.svg)](https://github.com/Sam-Sims/hashfasta/actions/workflows/check.yml)
 ![MSRV](https://img.shields.io/badge/MSRV-1.87.0-blue)
 
 # hashfasta
